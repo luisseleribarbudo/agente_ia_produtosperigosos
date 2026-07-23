@@ -80,8 +80,6 @@ exports.handler = async event => {
             name: AGENT_NAME
           },
 
-          conversation: session.id,
-
           input: [
             {
               role: 'user',
@@ -139,8 +137,6 @@ exports.handler = async event => {
 
         isLocal = true;
 
-        // IMPORTANTE:
-        // Mostra o erro real temporariamente para descobrirmos o problema.
         replyText =
           `Erro ao conectar ao Azure AI Foundry: ${error.message}`;
       }

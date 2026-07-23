@@ -13,6 +13,8 @@ exports.handler = async (event) => {
 
   const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
   console.log(`[Session] Criando nova sessão ${sessionId}...`);
+  console.log(`[Session] FOUNDRY_API_KEY configurada: ${!!FOUNDRY_API_KEY}`);
+  console.log(`[Session] FOUNDRY_ENDPOINT configurado: ${!!FOUNDRY_ENDPOINT}`);
 
   let isLocal = true;
   let foundryConversationId = '';
@@ -20,23 +22,29 @@ exports.handler = async (event) => {
   if (FOUNDRY_API_KEY && FOUNDRY_ENDPOINT) {
     try {
       const url = `${FOUNDRY_ENDPOINT}/openai/v1/conversations`;
+      console.log(`[Session] Conectando ao Foundry: ${url}`);
       const response = await fetch(url, {
         method: 'POST',
         headers: FOUNDRY_HEADERS,
         body: JSON.stringify({})
       });
 
+      const responseText = await response.text();
+      console.log(`[Session] Foundry respondeu com status ${response.status}: ${responseText.substring(0, 500)}`);
+
       if (response.ok) {
-        const data = await response.json();
+        const data = JSON.parse(responseText);
         foundryConversationId = data.id;
         isLocal = false;
         console.log(`[Session] Foundry remoto conectado! ID: ${foundryConversationId}`);
       } else {
-        console.warn(`[Session] Foundry remoto retornou ${response.status}. Usando fallback local.`);
+        console.warn(`[Session] Foundry retornou erro ${response.status}. Usando fallback local.`);
       }
     } catch (error) {
       console.error(`[Session] Erro ao conectar ao Foundry: ${error.message}. Usando fallback local.`);
     }
+  } else {
+    console.warn(`[Session] Variáveis FOUNDRY não configuradas. Modo local.`);
   }
 
   const session = {

@@ -38,6 +38,8 @@ exports.handler = async (event) => {
     let isLocal = session.isLocal;
 
     // Passo 1: Obter resposta do agente
+    console.log(`[Chat] isLocal=${isLocal}, FOUNDRY_API_KEY=${!!FOUNDRY_API_KEY}, FOUNDRY_ENDPOINT=${!!FOUNDRY_ENDPOINT}`);
+    
     if (!isLocal && FOUNDRY_API_KEY && FOUNDRY_ENDPOINT) {
       try {
         const url = `${FOUNDRY_ENDPOINT}/openai/v1/responses`;
@@ -47,16 +49,20 @@ exports.handler = async (event) => {
           'input': [{ 'role': 'user', 'content': message }]
         };
 
+        console.log(`[Chat] Enviando para Foundry: ${url}`);
         const response = await fetch(url, {
           method: 'POST',
           headers: FOUNDRY_HEADERS,
           body: JSON.stringify(payload)
         });
 
+        const responseText = await response.text();
+        console.log(`[Chat] Foundry respondeu status ${response.status}: ${responseText.substring(0, 500)}`);
+
         if (response.ok) {
-          const data = await response.json();
+          const data = JSON.parse(responseText);
           replyText = extrairRespostaFoundry(data);
-          console.log(`[Chat] Resposta recebida do Foundry remoto.`);
+          console.log(`[Chat] Resposta extraída do Foundry: ${replyText.substring(0, 200)}`);
         } else {
           console.warn(`[Chat] Foundry retornou erro (${response.status}). Fallback local.`);
           isLocal = true;
@@ -108,7 +114,7 @@ Por favor, gere a próxima resposta apropriada e estruturada do Assistente para 
           replyText = 'Desculpe, tive um problema técnico ao processar sua resposta. Poderia repetir, por favor?';
         }
       } else {
-        replyText = 'Entendi sua mensagem. Estou processando as informações para gerar o parecer de conformidade.';
+        replyText = `[Modo Local] Recebi sua mensagem: "${message}". O agente do Foundry não está disponível no momento. Para usar o agente IA, verifique se as variáveis FOUNDRY_API_KEY e FOUNDRY_ENDPOINT estão configuradas no Netlify.`;
       }
     }
 

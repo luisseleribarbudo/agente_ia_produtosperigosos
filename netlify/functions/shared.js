@@ -2,7 +2,10 @@ const { GoogleGenAI, Type } = require('@google/genai');
 
 const FOUNDRY_API_KEY = process.env.FOUNDRY_API_KEY;
 const FOUNDRY_ENDPOINT = process.env.FOUNDRY_ENDPOINT;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AGENT_NAME = 'transporte-rss-pp';
+
+const HAS_GEMINI = !!GEMINI_API_KEY;
 
 const FOUNDRY_HEADERS = {
   'Content-Type': 'application/json',
@@ -138,14 +141,66 @@ function buildRegulatoryRules() {
    - Kit de emergência e EPIs específicos são sempre exigidos para transporte de produtos perigosos acima dos limites de isenção.`;
 }
 
+function localAnalysis(session) {
+  const msgs = session.messages.map(m => m.content.toLowerCase()).join(' ');
+  const state = { ...session.complianceState };
+
+  if (msgs.includes('rss') || msgs.includes('resíduo') || msgs.includes('saude') || msgs.includes('saúde') || msgs.includes('infectante') || msgs.includes('hospitalar')) {
+    state.cargaTipo = 'RSS';
+    state.classeRisco = state.classeRisco || 'Classe 6.2 - Substâncias Infectantes';
+    state.codigoOnu = state.codigoOnu || 'UN 3291';
+    state.mopp = state.quantidade ? (parseFloat(state.quantidade) > 333 ? 'Sim' : 'Não') : 'Pendente';
+    state.cipp = state.quantidade ? (parseFloat(state.quantidade) > 333 ? 'Sim' : 'Não') : 'Pendente';
+  } else if (msgs.includes('gasolina') || msgs.includes('combustivel') || msgs.includes('combustível') || msgs.includes('inflamavel') || msgs.includes('inflamável')) {
+    state.cargaTipo = 'Produto Perigoso';
+    state.classeRisco = state.classeRisco || 'Classe 3 - Líquidos Inflamáveis';
+    state.codigoOnu = state.codigoOnu || 'UN 1203';
+    state.pontoFulgor = state.pontoFulgor || '< -40°C';
+    state.mopp = state.quantidade ? (parseFloat(state.quantidade) > 333 ? 'Sim' : 'Não') : 'Pendente';
+    state.cipp = state.quantidade ? (parseFloat(state.quantidade) > 333 ? 'Sim' : 'Não') : 'Pendente';
+  }
+
+  for (const f of session.missingFields) {
+    if (f.key in state && state[f.key] && state[f.key] !== '' && state[f.key] !== 'Pendente') {
+      session.missingFields = session.missingFields.filter(m => m.key !== f.key);
+    }
+  }
+
+  const filledCount = Object.values(state).filter(v => v && v !== '' && v !== 'Pendente').length;
+  const total = Object.keys(state).length;
+  const progresso = Math.round((filledCount / total) * 100);
+
+  return {
+    complianceState: state,
+    missingFields: session.missingFields,
+    parecerTecnico: {
+      resumo: `Análise local (sem IA). Carga identificada como ${state.cargaTipo || 'Não identificada'}. Código ONU: ${state.codigoOnu || 'Pendente'}.`,
+      analise: `Análise baseada em regras locais. ${buildRegulatoryRules()}`,
+      pontoFulgor: state.pontoFulgor || 'N/A',
+      riscoSubsidiario: state.riscoSubsidiario || 'Nenhum',
+      documentacaoConsultada: ['Resolução ANTT nº 5.947/21', 'NBR 7503', 'NBR 12810', 'NBR 14619'],
+      documentosNecessarios: [
+        { name: 'Manifesto de Transporte de Resíduos (MTR)', checked: false, requiredBy: 'Exigido pelo SINIR para rastreabilidade de resíduos' },
+        { name: 'Ficha de Emergência (NBR 7503)', checked: false, requiredBy: 'Exigida para resposta rápida em acidentes' },
+        { name: 'Envelope para Transporte (NBR 7503)', checked: false, requiredBy: 'Sinalização e acondicionamento de documentos' }
+      ],
+      alertasCriticos: progresso < 50 ? ['Campos obrigatórios ainda não preenchidos. Informe tipo de carga, classe de risco e código ONU.'] : [],
+      status: progresso >= 80 ? 'Aprovado' : progresso >= 40 ? 'Rascunho' : 'Rascunho',
+      progresso
+    }
+  };
+}
+
 module.exports = {
   getGeminiClient,
   extrairRespostaFoundry,
+  localAnalysis,
   DEFAULT_COMPLIANCE_STATE,
   COMPLIANCE_SCHEMA,
   buildRegulatoryRules,
   FOUNDRY_API_KEY,
   FOUNDRY_ENDPOINT,
   AGENT_NAME,
-  FOUNDRY_HEADERS
+  FOUNDRY_HEADERS,
+  HAS_GEMINI
 };

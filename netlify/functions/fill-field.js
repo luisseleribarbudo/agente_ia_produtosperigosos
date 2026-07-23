@@ -1,7 +1,9 @@
 const {
   getGeminiClient,
+  localAnalysis,
   COMPLIANCE_SCHEMA,
-  buildRegulatoryRules
+  buildRegulatoryRules,
+  HAS_GEMINI
 } = require('./shared');
 
 exports.handler = async (event) => {
@@ -30,13 +32,14 @@ exports.handler = async (event) => {
 
     // Gera resposta estruturada
     let replyText = '';
-    try {
-      const client = getGeminiClient();
-      const promptHistorico = session.messages.map(m => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`).join('\n');
+    if (HAS_GEMINI) {
+      try {
+        const client = getGeminiClient();
+        const promptHistorico = session.messages.map(m => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`).join('\n');
 
-      const response = await client.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `Você é um robô de conformidade técnica especializado em regulação de transporte rodoviário no Brasil (ANTT 5947/21, NBR 7503, NBR 12810, NBR 14619). Seu nome é "transporte-rss-pp".
+        const response = await client.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: `Você é um robô de conformidade técnica especializado em regulação de transporte rodoviário no Brasil (ANTT 5947/21, NBR 7503, NBR 12810, NBR 14619). Seu nome é "transporte-rss-pp".
 O usuário acabou de fornecer diretamente o valor para o campo "${key}" como "${value}".
 Gere uma resposta de parecer técnico de conformidade contendo este novo dado.
 
@@ -61,12 +64,15 @@ Histórico da conversa atual:
 ${promptHistorico}
 
 Por favor, gere a resposta estruturada contendo o dado atualizado:`,
-      });
+        });
 
-      replyText = response.text || `Perfeito! Registrei que o campo correspondente a **${key}** agora está definido como: "${value}".`;
-    } catch (error) {
-      console.error(`[FillField] Erro ao gerar resposta: ${error.message}`);
-      replyText = `Excelente! Registrei que o campo correspondente a **${key}** agora está definido como: "${value}". Deixe-me atualizar o parecer de conformidade e recalcular as exigências regulatórias.`;
+        replyText = response.text || `Perfeito! Registrei que o campo correspondente a **${key}** agora está definido como: "${value}".`;
+      } catch (error) {
+        console.error(`[FillField] Erro ao gerar resposta: ${error.message}`);
+        replyText = `Excelente! Registrei que o campo correspondente a **${key}** agora está definido como: "${value}". Deixe-me atualizar o parecer de conformidade e recalcular as exigências regulatórias.`;
+      }
+    } else {
+      replyText = `Campo **${key}** definido como: "${value}". Parecer de conformidade atualizado.`;
     }
 
     const assistantMsgId = 'msg_direct_confirm_' + Math.random().toString(36).substr(2, 9);
@@ -78,13 +84,14 @@ Por favor, gere a resposta estruturada contendo o dado atualizado:`,
     });
 
     // Re-analisa e recalcula
-    try {
-      const client = getGeminiClient();
-      const promptHistoricoCompactado = session.messages.map(m => `${m.role === 'user' ? 'U' : 'A'}: ${m.content}`).join('\n');
+    if (HAS_GEMINI) {
+      try {
+        const client = getGeminiClient();
+        const promptHistoricoCompactado = session.messages.map(m => `${m.role === 'user' ? 'U' : 'A'}: ${m.content}`).join('\n');
 
-      const analysisResponse = await client.models.generateContent({
-        model: 'gemini-2.0-flash',
-        contents: `Analise a conversa de conformidade técnica brasileira a seguir e extraia as variáveis em um formato estruturado JSON.
+        const analysisResponse = await client.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: `Analise a conversa de conformidade técnica brasileira a seguir e extraia as variáveis em um formato estruturado JSON.
 
 Conversa:
 ${promptHistoricoCompactado}
@@ -95,25 +102,36 @@ ${JSON.stringify(session.complianceState)}
 ${buildRegulatoryRules()}
 
 Gere uma resposta em JSON contendo o estado de conformidade atualizado, os campos que ainda faltam e o rascunho de parecer técnico completo.`,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: COMPLIANCE_SCHEMA
-        }
-      });
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: COMPLIANCE_SCHEMA
+          }
+        });
 
-      if (analysisResponse.text) {
-        const parsed = JSON.parse(analysisResponse.text.trim());
-        session.complianceState = parsed.complianceState;
-        session.missingFields = parsed.missingFields;
-        session.parecerTecnico = {
-          ...parsed.parecerTecnico,
-          id: session.parecerTecnico?.id || 'PT-' + Math.floor(1000 + Math.random() * 9000),
-          timestamp: new Date().toISOString()
-        };
-        console.log(`[FillField] Sessão ${sessionId} reanalisada. Progresso: ${session.parecerTecnico.progresso}%`);
+        if (analysisResponse.text) {
+          const parsed = JSON.parse(analysisResponse.text.trim());
+          session.complianceState = parsed.complianceState;
+          session.missingFields = parsed.missingFields;
+          session.parecerTecnico = {
+            ...parsed.parecerTecnico,
+            id: session.parecerTecnico?.id || 'PT-' + Math.floor(1000 + Math.random() * 9000),
+            timestamp: new Date().toISOString()
+          };
+          console.log(`[FillField] Sessão ${sessionId} reanalisada. Progresso: ${session.parecerTecnico.progresso}%`);
+        }
+      } catch (error) {
+        console.error(`[FillField] Erro ao reanalisar: ${error.message}`);
       }
-    } catch (error) {
-      console.error(`[FillField] Erro ao reanalisar: ${error.message}`);
+    } else {
+      const result = localAnalysis(session);
+      session.complianceState = result.complianceState;
+      session.missingFields = result.missingFields;
+      session.parecerTecnico = {
+        ...result.parecerTecnico,
+        id: session.parecerTecnico?.id || 'PT-' + Math.floor(1000 + Math.random() * 9000),
+        timestamp: new Date().toISOString()
+      };
+      console.log(`[FillField] Sessão ${sessionId} reanalisada localmente.`);
     }
 
     return {

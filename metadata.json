@@ -1,0 +1,6 @@
+{
+  "name": "Technical Compliance Protocol",
+  "description": "Protocolo técnico de conformidade para transporte de resíduos de serviços de saúde e produtos perigosos com assistente chatbot integrado.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

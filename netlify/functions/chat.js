@@ -90,7 +90,9 @@ exports.handler = async event => {
           ]
         };
 
-        console.log(`[Chat] Enviando requisição para o Foundry: ${url}`);
+        console.log(
+          `[Chat] Enviando requisição para o Foundry: ${url}`
+        );
 
         const response = await fetch(url, {
           method: 'POST',
@@ -137,8 +139,10 @@ exports.handler = async event => {
 
         isLocal = true;
 
+        // IMPORTANTE:
+        // Mostra o erro real temporariamente para descobrirmos o problema.
         replyText =
-          'O agente do Azure AI Foundry não conseguiu responder neste momento. A análise local será utilizada para manter o processamento da sessão.';
+          `Erro ao conectar ao Azure AI Foundry: ${error.message}`;
       }
     } else {
       console.error(
@@ -171,12 +175,9 @@ exports.handler = async event => {
 
     /*
      * ============================================================
-     * 3. ANÁLISE ESTRUTURADA
+     * 3. ANÁLISE LOCAL DE APOIO
      *
-     * O Foundry é responsável pela resposta principal.
-     *
-     * Se o Foundry falhar, usamos apenas a análise local.
-     * Nenhum modelo Gemini é utilizado.
+     * Nenhum Gemini é utilizado.
      * ============================================================
      */
 
